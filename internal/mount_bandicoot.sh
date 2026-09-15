@@ -9,7 +9,6 @@
 # verifies VPN/network access, and works under any POSIX shell
 # (sh, bash, zsh, dash, etc.).
 # ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-
 set -eu
 # -e: exit immediately on any error
 # -u: treat unset variables as an error
@@ -51,7 +50,7 @@ case "$OS" in
         echo "→ Detected macOS (Darwin). Using mount_smbfs."
         #
         # mount_smbfs is the built-in macOS SMB client.
-        # It will prompt you for credentials if required,
+        # It will prompt you for a password if required,
         # or use your current login keychain.
         #
         # NOTE: mount_smbfs falls back to your local Mac shortname as the
@@ -68,8 +67,35 @@ case "$OS" in
             exit 1
         fi
 
-        SHARE_WITH_USER="//${SMB_USERNAME}@${SHARE#//}"
-        mount_smbfs "$SHARE_WITH_USER" "$MOUNT_POINT"
+        # NOTE: unlike mount.cifs on Linux, mount_smbfs has no "domainauto"
+        # option — there is no way for it to negotiate the AD domain on its
+        # own, so it must be supplied explicitly as //DOMAIN;user@host/share.
+        # A wrong domain here fails with a generic "Authentication error"
+        # that looks identical to a wrong password, which is what was
+        # happening with the hardcoded DOMAIN="UCDENVER" value. Since the
+        # correct NetBIOS domain can differ depending on how an account was
+        # provisioned (CU Anschutz's AD forest predates its current name),
+        # prompt for it instead of hardcoding it, so anyone hitting this can
+        # self-correct without editing the script.
+        printf "AD domain for %s [default: UCDENVER, leave as '-' to omit]: " "$HOST" >/dev/tty
+        read -r SMB_DOMAIN </dev/tty
+        SMB_DOMAIN="${SMB_DOMAIN:-UCDENVER}"
+
+        if [ "$SMB_DOMAIN" = "-" ]; then
+            SHARE_WITH_USER="//${SMB_USERNAME}@${SHARE#//}"
+        else
+            SHARE_WITH_USER="//${SMB_DOMAIN};${SMB_USERNAME}@${SHARE#//}"
+        fi
+
+        # Per Apple's mount_smbfs(8) man page: "You should always use the
+        # system mount command and never call mount_smbfs directly."
+        if ! mount -t smbfs "$SHARE_WITH_USER" "$MOUNT_POINT"; then
+            echo "✗ Failed to mount $SHARE at $MOUNT_POINT." >&2
+            echo "   A failure here is almost always a wrong AD domain, not a" >&2
+            echo "   wrong password. Try again with a different domain (e.g." >&2
+            echo "   UCHSC, the campus's legacy AD name) or '-' to omit it." >&2
+            # exit 1
+        fi
         ;;
 
     Linux)
@@ -106,8 +132,11 @@ case "$OS" in
             exit 1
         fi
         # Mount the share with domainauto for automatic domain selection
-        sudo mount -t cifs "$SHARE" "$MOUNT_POINT" \
-            -o username="$CIFS_USERNAME",uid="$USER",gid="$USER",domainauto,file_mode=0777,dir_mode=0777
+        if ! sudo mount -t cifs "$SHARE" "$MOUNT_POINT" \
+            -o username="$CIFS_USERNAME",uid="$USER",gid="$USER",domainauto,file_mode=0777,dir_mode=0777; then
+            echo "✗ mount.cifs failed to mount $SHARE at $MOUNT_POINT." >&2
+            exit 1
+        fi
         ;;
 
     *)

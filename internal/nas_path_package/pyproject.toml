@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nas_path_package"
+version = "0.1.0"
+description = "Helpers for locating Way Lab NAS mount points (bandicoot, koala) from notebooks and scripts."
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nas_path_package"]

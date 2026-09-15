@@ -184,7 +184,8 @@ __Special note on `IdentityFile=~/.ssh/alpine`:__ this `sshfs` option tells SSH 
 - __MacOS:__ install [macFUSE](https://github.com/macfuse/macfuse/wiki/File-Systems-%E2%80%90-SSHFS) and `sshfs`:
 
   ```shell
-  brew install --cask macfuse
+  brew tap macos-fuse-t/homebrew-cask
+  brew install fuse-t fuse-t-sshfs
   ```
 
   Then mount with `sshfs`, for example:
@@ -217,3 +218,38 @@ __Special note on `IdentityFile=~/.ssh/alpine`:__ this `sshfs` option tells SSH 
   ```
 
 Note: speed comparisons between `sshfs` (PetaLibrary) and CIFS (Isilon) have not yet been performed; consider this if performance becomes a concern.
+
+### Connection script
+
+Please feel free to use the following script to automatically help setup your mount point to the Way Lab specific mount point for both PetaLibrary and Isilon: `koala` and `bandicoot`, respectively.
+
+```shell
+curl https://raw.githubusercontent.com/WayScience/playbooks/refs/heads/main/internal/mount_koala.sh | sh
+```
+
+## Mounting both Isilon and PetaLibrary at once
+
+```shell
+curl https://raw.githubusercontent.com/WayScience/playbooks/refs/heads/main/internal/mount_nas.sh | sh
+```
+
+## Interacting with both filesystems programmatically
+
+This can be done using a helper function `nas_path_check` in `internal/nas_path_set.py` which will check if the path is on either filesystem and return the root directory of the filesystem and whether the code is running in a notebook environment.
+
+This function can be installed in your Python environment with the following command:
+
+```shell
+pip install git+https://github.com/WayScience/playbooks.git#subdirectory=internal/nas_path_package
+```
+
+```python
+from nas_path_package import init_notebook, nas_path_check
+
+root_dir, in_notebook = init_notebook()
+data_dir = nas_path_check(root_dir, nas_name="bandicoot")
+```
+
+The data_dir can now be used to access the data on the NAS filesystem.
+If the NAS is not mounted, it will fall back to the enclosing Git repository's root directory.
+This keeps the code portable and allows for easy access to data on the NAS filesystem without hardcoding paths and allows for someone without access to the NAS to still run the code without errors using local storage.
